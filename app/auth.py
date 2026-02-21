@@ -6,7 +6,7 @@ from fastapi.security import OAuth2PasswordBearer
 from app.database import SessionLocal
 from app.models import User
 
-# 🔐 Use Argon2 (no 72 byte limit)
+
 pwd_context = CryptContext(
     schemes=["argon2"],
     deprecated="auto"
