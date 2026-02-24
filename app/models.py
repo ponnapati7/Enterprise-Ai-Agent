@@ -54,3 +54,27 @@ class APIKey(Base):
     @staticmethod
     def generate_key():
         return "ea_" + secrets.token_hex(32)
+    
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import relationship
+
+class Document(Base):
+    __tablename__ = "documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
+
+    chunks = relationship("DocumentChunk", back_populates="document")
+
+from pgvector.sqlalchemy import Vector
+
+class DocumentChunk(Base):
+    __tablename__ = "document_chunks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"))
+    content = Column(Text, nullable=False)
+    embedding = Column(Vector(384))
+
+    document = relationship("Document", back_populates="chunks")

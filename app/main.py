@@ -69,12 +69,68 @@ from datetime import datetime, date
 
 
 DAILY_LIMIT = 20
+from app.embeddings import get_embedding
+from app.models import DocumentChunk, DocumentAnalysis
+from sqlalchemy.orm import Session
+from app.database import SessionLocal
+from app.prompt_templates import enterprise_rag_prompt
+@app.get("/ask")
+def ask(question: str):
+    db: Session = SessionLocal()
+
+    try:
+        start_time = time.time()
+
+        question_embedding = get_embedding(question)
+
+        
+        results = db.query(DocumentChunk).order_by(
+            DocumentChunk.embedding.l2_distance(question_embedding)
+        ).limit(3).all()
+
+  
+        retrieved_chunks = [r.content for r in results]
+        context = "\n\n".join(retrieved_chunks)
+        
+       
+        prompt = prompt = enterprise_rag_prompt(context, question)
+
+        answer = ask_llm(prompt)
+
+        end_time = time.time()
+        response_time = (end_time - start_time) * 1000  
+
+        
+        record = DocumentAnalysis(
+            input_text=question,
+            ai_response=answer,
+            confidence_score=None,
+            response_time_ms=response_time
+        )
+
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+
+        return {
+            "id": record.id,
+            "question": question,
+            "response": answer,
+            "response_time_ms": response_time,
+            "retrieved_chunks_count": len(retrieved_chunks)
+        }
+        
+
+    finally:
+        db.close()
+
 
 
 @app.get("/ask")
 def ask(
     question: str,
     current_user: User = Depends(get_current_user)
+    
 ):
     db = SessionLocal()
 
@@ -134,6 +190,7 @@ def ask(
     response_time_ms=response_time,
     embedding=embedding
 )
+from sqlalchemy import text
 
 
 
@@ -294,35 +351,67 @@ def admin_dashboard(
 from app.embeddings import get_embedding
 
 
-from sqlalchemy import text
+from app.models import DocumentChunk
+from sqlalchemy.orm import Session
+from app.embeddings import get_embedding
 
 @app.get("/semantic-search")
 def semantic_search(query: str):
-    db = SessionLocal()
+    db: Session = SessionLocal()
+
     try:
         query_embedding = get_embedding(query)
 
-        sql = text("""
-            SELECT id, input_text, ai_response,
-                   embedding <-> :query_embedding AS distance
-            FROM document_analysis
-            ORDER BY embedding <-> :query_embedding
-            LIMIT 5;
-        """)
-
-        results = db.execute(sql, {
-            "query_embedding": query_embedding
-        }).fetchall()
+        results = db.query(DocumentChunk).order_by(
+            DocumentChunk.embedding.l2_distance(query_embedding)
+        ).limit(5).all()
 
         return [
             {
-                "id": r.id,
-                "question": r.input_text,
-                "answer": r.ai_response,
-                "similarity_score": r.distance
+                "chunk_id": r.id,
+                "content": r.content
             }
             for r in results
         ]
 
     finally:
         db.close()
+
+from fastapi import UploadFile, File
+from app.embeddings import get_embedding
+from app.models import Document, DocumentChunk
+
+@app.post("/upload-document")
+async def upload_document(title: str, file: UploadFile = File(...)):
+    db = SessionLocal()
+
+    try:
+        content = await file.read()
+        text = content.decode("utf-8")
+
+        document = Document(title=title)
+        db.add(document)
+        db.commit()
+        db.refresh(document)
+
+    
+        chunks = [text[i:i+500] for i in range(0, len(text), 500)]
+
+        for chunk_text in chunks:
+            embedding = get_embedding(chunk_text)
+
+            chunk = DocumentChunk(
+                document_id=document.id,
+                content=chunk_text,
+                embedding=embedding
+            )
+            db.add(chunk)
+
+        db.commit()
+
+        return {"message": "Document uploaded and indexed successfully"}
+
+    finally:
+        db.close()
+
+
