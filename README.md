@@ -68,10 +68,3 @@ User Query
 
 ---
 
---> Future Improvements
-
-- Workflow orchestration (Airflow simulation)
-- Multi-model benchmarking
-- Distributed embedding service
-- Multi-tenant architecture
-
