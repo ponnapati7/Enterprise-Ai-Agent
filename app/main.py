@@ -17,13 +17,6 @@ app = FastAPI()
 
 Base.metadata.create_all(bind=engine)
 
-
-
-@app.get("/")
-def home():
-    return {"message": "Enterprise AI Agent Running 🚀"}
-
-
 @app.post("/register")
 def register(username: str, password: str):
     db = SessionLocal()
